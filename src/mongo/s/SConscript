@@ -15,6 +15,7 @@ env.SConscript(
         'client',
         'commands',
         'query',
+        'stats',
         'write_ops',
     ],
     exports=[
