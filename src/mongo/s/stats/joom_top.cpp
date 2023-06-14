@@ -29,23 +29,18 @@ void JoomTop::record(OperationContext* opCtx, bool isError) {
         return;
     }
 
-    auto elapsedMicros = opCtx->getElapsedTime().count();
+    auto elapsedMicros = durationCount<Microseconds>(opCtx->getElapsedTime());
     auto cmdName = mongoCommandToCommandName(curOp.getCommand());
 
     auto hashedNs = UsageMap::hasher().hashed_key(ns);
     stdx::lock_guard<SimpleMutex> lk(_lock);
 
-    CollectionData& coll = _usage[hashedNs];
+    JoomLatencyHistogram& collHist = _usage[hashedNs];
     _incrementHistogram(opCtx,
                         elapsedMicros,
-                        &coll.latencyHistogram,
+                        &collHist,
                         cmdName,
                         isError);
-}
-
-void JoomTop::collectionDropped(const NamespaceString& nss) {
-    stdx::lock_guard<SimpleMutex> lk(_lock);
-    _usage.erase(nss.ns());
 }
 
 void JoomTop::append(BSONObjBuilder& b) {
@@ -60,13 +55,15 @@ latencyStats: {
             histogram: [{le: Long, count: Long}],
             sum: Long,
             count: Long,
-            errors: Long
+            errors: Long,
+            nonUserOps: Long,
         }
     }
 }
 */
 void JoomTop::_appendToUsageMap(BSONObjBuilder& b, const UsageMap& map) const {
     std::vector<std::string> names;
+    names.reserve(map.size());
     for (UsageMap::const_iterator i = map.begin(); i != map.end(); ++i) {
         names.push_back(i->first);
     }
@@ -75,8 +72,8 @@ void JoomTop::_appendToUsageMap(BSONObjBuilder& b, const UsageMap& map) const {
     BSONObjBuilder bb(b.subobjStart("latencyStats"));
     for (size_t i = 0; i < names.size(); i++) {
         BSONObjBuilder bbb(bb.subobjStart(names[i]));
-        const CollectionData& coll = map.find(names[i])->second;
-        coll.latencyHistogram.append(&bb);
+        const auto& collHist = map.find(names[i])->second;
+        collHist.append(&bb);
         bbb.done();
     }
     bb.done();
@@ -89,8 +86,7 @@ void JoomTop::_incrementHistogram(OperationContext* opCtx,
                               bool isError) {
     // Only update histogram if operation came from a user.
     Client* client = opCtx->getClient();
-    if (client->isFromUserConnection() && !client->isInDirectClient()) {
-        latencyHistogram->increment(cmdName, latency, isError);
-    }
+    const bool isUser = client->isFromUserConnection() && !client->isInDirectClient();
+    latencyHistogram->increment(cmdName, latency, isError, isUser);
 }
 }  // namespace mongo

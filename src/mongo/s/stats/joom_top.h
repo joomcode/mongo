@@ -21,18 +21,12 @@ public:
 
     JoomTop() = default;
 
-    struct CollectionData {
-        JoomLatencyHistogram latencyHistogram;
-    };
-
-    typedef StringMap<CollectionData> UsageMap;
+    typedef StringMap<JoomLatencyHistogram> UsageMap;
 
 public:
     void record(OperationContext* opCtx, bool isError);
 
     void append(BSONObjBuilder& b);
-
-    void collectionDropped(const NamespaceString& nss);
 
 private:
     void _appendToUsageMap(BSONObjBuilder& b, const UsageMap& map) const;
@@ -48,18 +42,8 @@ private:
 };
 
 inline const CommandName mongoCommandToCommandName(const Command* cmd) {
-    const StringMap<CommandName> map = {
-        {"insert", CommandName::Insert},
-        {"find", CommandName::Find},
-        {"findAndModify", CommandName::FindAndModify},
-        {"update", CommandName::Update},
-        {"delete", CommandName::Delete},
-        {"aggregate", CommandName::Aggregate},
-        {"distinct", CommandName::Distinct},
-    };
-    
-    const auto entry = map.find(cmd->getName());
-    if (entry == map.end()) {
+    const auto entry = StringToCommandNameMap.find(cmd->getName());
+    if (entry == StringToCommandNameMap.end()) {
         return CommandName::Other;
     }
 

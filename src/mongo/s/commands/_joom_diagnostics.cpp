@@ -35,7 +35,7 @@ public:
         return true;
     }
 
-} joomWTFCmd;
+} joomDiagnosticsCmd;
 
 }  // namespace
 }  // namespace mongo

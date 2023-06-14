@@ -21,31 +21,31 @@ const std::array<uint64_t, JoomLatencyHistogram::kMaxBuckets>
         3000000,
     };
 
-void JoomLatencyHistogram::increment(CommandName cmdName, uint64_t latency, bool isError) {
+void JoomLatencyHistogram::increment(CommandName cmdName, uint64_t latency, bool isError, bool isUser) {
     switch (cmdName) {
         case CommandName::Insert:
-            _incrementData(latency, isError, &_insert);
+            _incrementData(latency, isError, isUser, &_insert);
             break;
         case CommandName::Find:
-            _incrementData(latency, isError, &_find);
+            _incrementData(latency, isError, isUser, &_find);
             break;
         case CommandName::FindAndModify:
-            _incrementData(latency, isError, &_findAndModify);
+            _incrementData(latency, isError, isUser, &_findAndModify);
             break;
         case CommandName::Update:
-            _incrementData(latency, isError, &_update);
+            _incrementData(latency, isError, isUser, &_update);
             break;
         case CommandName::Delete:
-            _incrementData(latency, isError, &_delete);
+            _incrementData(latency, isError, isUser, &_delete);
             break;
         case CommandName::Aggregate:
-            _incrementData(latency, isError, &_aggregate);
+            _incrementData(latency, isError, isUser, &_aggregate);
             break;
         case CommandName::Distinct:
-            _incrementData(latency, isError, &_distinct);
+            _incrementData(latency, isError, isUser, &_distinct);
             break;
         case CommandName::Other:
-            _incrementData(latency, isError, &_other);
+            _incrementData(latency, isError, isUser, &_other);
     }
 }
 
@@ -64,29 +64,20 @@ void JoomLatencyHistogram::append(BSONObjBuilder* builder) const {
 // values must be less or equal to fit into. Values bigger than kUpperBoundsMicros[kMaxBuckets-1]
 // don't fit into any bucket and count separately. 
 int JoomLatencyHistogram::_getBucket(uint64_t value) {
-    int l = 0;
-    int r = kMaxBuckets - 1;
-
-    if (value > kUpperBoundsMicros[r]) {
+    if (value > kUpperBoundsMicros[kMaxBuckets - 1]) {
         return -1;
     }
 
-    while (l <= r) {
-        int m = l + (r - l) / 2;
-        if (value <= kUpperBoundsMicros[m]) {
-            r = m - 1;
-        } else {
-            l = m + 1;
-        }
-    }
-
-    if (r < kMaxBuckets - 1) {
-        return r + 1;
-    }
-    return r;
+    auto it = std::lower_bound(kUpperBoundsMicros.begin(), kUpperBoundsMicros.end(), value);
+    return it - kUpperBoundsMicros.begin();
 }
 
-void JoomLatencyHistogram::_incrementData(uint64_t latency, bool isError, HistogramData* data) {
+void JoomLatencyHistogram::_incrementData(uint64_t latency, bool isError, bool isUser, HistogramData* data) {
+    if (!isUser) {
+        data->nonUserCount++;
+        return;
+    }
+
     if (isError) {
         data->errorCount++;
         return;
@@ -117,6 +108,7 @@ void JoomLatencyHistogram::_append(const HistogramData* data,
     histogramBuilder.append("sum", static_cast<long long>(data->sum));
     histogramBuilder.append("count", static_cast<long long>(data->successCount));
     histogramBuilder.append("errors", static_cast<long long>(data->errorCount));
+    histogramBuilder.append("nonUserOps", static_cast<long long>(data->nonUserCount));
     histogramBuilder.doneFast();
 }
 
