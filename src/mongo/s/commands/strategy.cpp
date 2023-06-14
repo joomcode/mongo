@@ -89,6 +89,7 @@
 #include "mongo/s/shard_invalidated_for_targeting_exception.h"
 #include "mongo/s/stale_exception.h"
 #include "mongo/s/transaction_router.h"
+#include "mongo/s/stats/joom_top.h"
 #include "mongo/transport/hello_metrics.h"
 #include "mongo/transport/service_executor.h"
 #include "mongo/transport/session.h"
@@ -365,6 +366,11 @@ Future<void> ExecCommandClient::run() {
            })
         .then([this] { _epilogue(); })
         .onCompletion([this](Status status) {
+            ON_BLOCK_EXIT([this, status]{
+                auto opCtx = _rec->getOpCtx();
+                JoomTop::get(opCtx->getServiceContext()).record(opCtx, !status.isOK());
+            });
+            
             if (!status.isOK() && status.code() != ErrorCodes::SkipCommandExecution)
                 return status;  // Execution was interrupted due to an error.
 
