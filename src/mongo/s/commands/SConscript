@@ -22,6 +22,7 @@ env.Library(
 env.Library(
     target='cluster_commands',
     source=[
+        '_joom_diagnostics.cpp',
         'batch_downconvert.cpp',
         'cluster_abort_transaction_cmd.cpp',
         'cluster_add_shard_cmd.cpp',
@@ -163,6 +164,7 @@ env.Library(
         '$BUILD_DIR/mongo/s/query/cluster_client_cursor',
         '$BUILD_DIR/mongo/s/sharding_api',
         '$BUILD_DIR/mongo/s/sharding_router_api',
+        '$BUILD_DIR/mongo/s/stats/joom_top',
         '$BUILD_DIR/mongo/s/vector_clock_mongos',
         '$BUILD_DIR/mongo/transport/message_compressor',
         '$BUILD_DIR/mongo/transport/transport_layer_common',
