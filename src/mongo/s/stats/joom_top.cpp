@@ -31,11 +31,13 @@ void JoomTop::record(OperationContext* opCtx, bool isError) {
 
     auto elapsedMicros = durationCount<Microseconds>(opCtx->getElapsedTime());
     auto cmdName = mongoCommandToCommandName(curOp.getCommand());
-
-    auto hashedNs = UsageMap::hasher().hashed_key(ns);
+    auto db = curOp.getNSS().db().toString();
+    auto hashedDB = UsageMap::hasher().hashed_key(db);
+    auto coll = curOp.getNSS().coll().toString();
+    auto hashedColl = UsageMap::hasher().hashed_key(coll);
     stdx::lock_guard<SimpleMutex> lk(_lock);
 
-    JoomLatencyHistogram& collHist = _usage[hashedNs];
+    JoomLatencyHistogram& collHist = _usage[hashedDB][hashedColl];
     _incrementHistogram(opCtx,
                         elapsedMicros,
                         &collHist,
@@ -43,15 +45,20 @@ void JoomTop::record(OperationContext* opCtx, bool isError) {
                         isError);
 }
 
-void JoomTop::append(BSONObjBuilder& b) {
+void JoomTop::append(BSONObjBuilder& b, bool verbose) {
     stdx::lock_guard<SimpleMutex> lk(_lock);
+    if (verbose) {
+        _appendToUsageMapVerbose(b, _usage);
+        return;
+    }
     _appendToUsageMap(b, _usage);
 }
 
-/* Adds statistics data to a response BSON object. Basically, it is a map of the following format:
+/*
+Adds statistics data to a response BSON object in a following format:
 latencyStats: {
-    <COLLECTION_NAME> : {
-        <COMMAND_NAME> {
+    <DB_NAME> : {
+        <COMMAND_TYPE> {
             histogram: [{le: Long, count: Long}],
             sum: Long,
             count: Long,
@@ -62,21 +69,80 @@ latencyStats: {
 }
 */
 void JoomTop::_appendToUsageMap(BSONObjBuilder& b, const UsageMap& map) const {
-    std::vector<std::string> names;
-    names.reserve(map.size());
-    for (UsageMap::const_iterator i = map.begin(); i != map.end(); ++i) {
-        names.push_back(i->first);
+    auto compactedMap = _compactUsageMap(map);
+    std::vector<std::string> dbNames;
+    dbNames.reserve(compactedMap.size());
+    for (auto i = compactedMap.begin(); i != compactedMap.end(); ++i) {
+        dbNames.push_back(i->first);
     }
-    std::sort(names.begin(), names.end());
+    std::sort(dbNames.begin(), dbNames.end());
 
-    BSONObjBuilder bb(b.subobjStart("latencyStats"));
-    for (size_t i = 0; i < names.size(); i++) {
-        BSONObjBuilder bbb(bb.subobjStart(names[i]));
-        const auto& collHist = map.find(names[i])->second;
-        collHist.append(&bb);
-        bbb.done();
+    BSONObjBuilder bsonStats(b.subobjStart("latencyStats"));
+    for (size_t i = 0; i < dbNames.size(); ++i) {
+        BSONObjBuilder bsonDB(bsonStats.subobjStart(dbNames[i]));
+        const auto& dbHist = compactedMap.find(dbNames[i])->second;
+        dbHist.append(&bsonDB);
+        bsonDB.done();
     }
-    bb.done();
+    bsonStats.done();
+}
+
+/* 
+Adds statistics data to a response BSON object in a following format(extended):
+latencyStats: {
+    <DB_NAME> : {
+        <COLLECTION_NAME> : {
+            <COMMAND_NAME> {
+                histogram: [{le: Long, count: Long}],
+                sum: Long,
+                count: Long,
+                errors: Long,
+                nonUserOps: Long,
+            }
+        }
+    }
+}
+*/
+void JoomTop::_appendToUsageMapVerbose(BSONObjBuilder& b, const UsageMap& map) const {
+    std::vector<std::string> dbNames;
+    dbNames.reserve(map.size());
+    for (auto i = map.begin(); i != map.end(); ++i) {
+        dbNames.push_back(i->first);
+    }
+    std::sort(dbNames.begin(), dbNames.end());
+
+    BSONObjBuilder bsonStats(b.subobjStart("latencyStats"));
+    for (size_t i = 0; i < dbNames.size(); ++i) {
+        const auto& dbHist = map.find(dbNames[i])->second;
+        std::vector<std::string> collNames;
+        collNames.reserve(dbHist.size());
+        for (auto j = dbHist.begin(); j != dbHist.end(); ++j) {
+            collNames.push_back(j->first);
+        }
+        std::sort(collNames.begin(), collNames.end());
+
+        BSONObjBuilder bsonDB(bsonStats.subobjStart(dbNames[i]));
+        for (size_t k = 0; k < collNames.size(); ++k) {
+            BSONObjBuilder bsonColl(bsonDB.subobjStart(collNames[k]));
+            const auto& collHist = dbHist.find(collNames[k])->second;
+            collHist.appendVerbose(&bsonColl);
+            bsonColl.done();
+        }
+        bsonDB.done();
+    }
+    bsonStats.done();
+}
+
+StringMap<JoomLatencyHistogram> JoomTop::_compactUsageMap(const UsageMap& map) const {
+    StringMap<JoomLatencyHistogram> result;
+    for (auto i = map.begin(); i != map.end(); ++i) {
+        auto hashedDB = UsageMap::hasher().hashed_key(i->first);
+        auto stats = i->second;
+        for (auto j = stats.begin(); j != stats.end(); ++j) {
+            result[hashedDB].add(&j->second);
+        }
+    }
+    return result;
 }
 
 void JoomTop::_incrementHistogram(OperationContext* opCtx,
