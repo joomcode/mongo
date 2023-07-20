@@ -32,10 +32,12 @@ const static StringMap<CommandName> StringToCommandNameMap = {
 const static std::vector<uint64_t> exponentialBuckets(uint64_t min, uint64_t max, size_t count) {
     std::vector<uint64_t> buckets;
     buckets.reserve(count);
-    double step = std::exp(std::log(max/min) / static_cast<double>(count - 1));
+    double step = std::exp(std::log(static_cast<double>(max)/static_cast<double>(min)) / static_cast<double>(count - 1));
 
-    uint64_t value = min;
+    double value = min;
     for (size_t i = 0; i < count - 1; ++i) {
+        // losing precision here is OK, because we measure latency in microseconds
+        // and fraction of microsecond doesn't make sense for us in any case.
         buckets.push_back(std::round(value));
         value *= step;
     }
@@ -79,7 +81,7 @@ private:
             this->sum += data->sum;
             this->successCount += data->successCount;
             this->errorCount += data->errorCount;
-            this->nonUserCount += nonUserCount;
+            this->nonUserCount += data->nonUserCount;
         }
     };
 

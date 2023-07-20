@@ -137,7 +137,7 @@ StringMap<JoomLatencyHistogram> JoomTop::_compactUsageMap(const UsageMap& map) c
     StringMap<JoomLatencyHistogram> result;
     for (auto i = map.begin(); i != map.end(); ++i) {
         auto hashedDB = UsageMap::hasher().hashed_key(i->first);
-        auto stats = i->second;
+        auto &stats = i->second;
         for (auto j = stats.begin(); j != stats.end(); ++j) {
             result[hashedDB].add(&j->second);
         }

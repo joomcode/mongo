@@ -7,6 +7,7 @@
 
 namespace mongo {
 
+// latency measured in microseconds(src/mongo/s/stats/joom_top.cpp)
 const std::vector<uint64_t> JoomLatencyHistogram::kUpperBoundsMicros = exponentialBucketsWithExpectedMedian(1000, 10000, 60000000, kMaxBuckets);
 
 void JoomLatencyHistogram::increment(CommandName cmdName, uint64_t latency, bool isError, bool isUser) {
