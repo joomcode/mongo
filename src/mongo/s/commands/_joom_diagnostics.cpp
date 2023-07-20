@@ -31,7 +31,9 @@ public:
              const std::string& dbname,
              const BSONObj& cmdObj,
              BSONObjBuilder& result) override {
-        JoomTop::get(opCtx->getServiceContext()).append(result);
+        bool verbose = cmdObj["verbose"].booleanSafe();
+        JoomTop::get(opCtx->getServiceContext()).append(result, verbose);
+
         return true;
     }
 

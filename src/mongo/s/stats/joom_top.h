@@ -21,15 +21,18 @@ public:
 
     JoomTop() = default;
 
-    typedef StringMap<JoomLatencyHistogram> UsageMap;
+    typedef StringMap<StringMap<JoomLatencyHistogram>> UsageMap;
 
 public:
     void record(OperationContext* opCtx, bool isError);
 
-    void append(BSONObjBuilder& b);
+    void append(BSONObjBuilder& b, bool verbose);
 
 private:
     void _appendToUsageMap(BSONObjBuilder& b, const UsageMap& map) const;
+    void _appendToUsageMapVerbose(BSONObjBuilder& b, const UsageMap& map) const;
+
+    StringMap<JoomLatencyHistogram> _compactUsageMap(const UsageMap& map) const;
 
     void _incrementHistogram(OperationContext* opCtx,
                              int64_t latency,
