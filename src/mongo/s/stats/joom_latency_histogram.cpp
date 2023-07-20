@@ -7,19 +7,8 @@
 
 namespace mongo {
 
-const std::array<uint64_t, JoomLatencyHistogram::kMaxBuckets>
-    JoomLatencyHistogram::kUpperBoundsMicros = {
-        1000,
-        5000,
-        10000,
-        20000,
-        50000,
-        100000,
-        300000,
-        500000,
-        1000000,
-        3000000,
-    };
+// latency measured in microseconds(src/mongo/s/stats/joom_top.cpp)
+const std::vector<uint64_t> JoomLatencyHistogram::kUpperBoundsMicros = exponentialBucketsWithExpectedMedian(1000, 10000, 60000000, kMaxBuckets);
 
 void JoomLatencyHistogram::increment(CommandName cmdName, uint64_t latency, bool isError, bool isUser) {
     switch (cmdName) {
@@ -49,7 +38,34 @@ void JoomLatencyHistogram::increment(CommandName cmdName, uint64_t latency, bool
     }
 }
 
+void JoomLatencyHistogram::add(const JoomLatencyHistogram* data) {
+    this->_insert._add(&data->_insert);
+    this->_find._add(&data->_find);
+    this->_findAndModify._add(&data->_findAndModify);
+    this->_update._add(&data->_update);
+    this->_delete._add(&data->_delete);
+    this->_aggregate._add(&data->_aggregate);
+    this->_distinct._add(&data->_distinct);
+    this->_other._add(&data->_other);
+}
+
 void JoomLatencyHistogram::append(BSONObjBuilder* builder) const {
+    HistogramData _read, _write;
+    _read._add(&_find);
+    _read._add(&_aggregate);
+    _read._add(&_distinct);
+    _append(&_read, "read", builder);
+
+    _write._add(&_insert);
+    _write._add(&_findAndModify);
+    _write._add(&_update);
+    _write._add(&_delete);
+    _append(&_write, "write", builder);
+
+    _append(&_other, "other", builder);
+}
+
+void JoomLatencyHistogram::appendVerbose(BSONObjBuilder* builder) const {
     _append(&_insert, "insert", builder);
     _append(&_find, "find", builder);
     _append(&_findAndModify, "findAndModify", builder);
